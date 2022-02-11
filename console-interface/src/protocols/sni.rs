@@ -1,16 +1,42 @@
 tonic::include_proto!("_");
 use grpc_web_client::Client;
 use async_trait::async_trait;
+use std::sync::Arc;
+use std::collections::HashMap;
+use futures::lock::Mutex;
+
 use crate::protocols::protocol::{Device, Connection, ConnectionError};
 
 pub struct SNIConnection {
     client: Client,
+    mappings: Arc<Mutex<HashMap<String, i32>>>
 }
 
 impl SNIConnection {
     pub fn new(uri: &str) -> Self {
         Self {
-            client: Client::new(uri.to_string())
+            client: Client::new(uri.to_string()),
+            mappings: Arc::new(Mutex::new(HashMap::new()))
+        }
+    }
+
+    async fn get_mapping(&self, device: &str) -> Result<i32, ConnectionError> {
+        let mut client = device_memory_client::DeviceMemoryClient::new(self.client.clone());
+        let map_lock = self.mappings.clone();
+        let mut mappings = map_lock.lock().await;
+        match mappings.get(device) {
+            Some(m) => Ok(*m),
+            _ => {
+                let mapping_request = tonic::Request::new(DetectMemoryMappingRequest {
+                    fallback_memory_mapping: None,
+                    rom_header00_ffb0: None,
+                    uri: device.into()
+                });
+
+                let mapping_response = client.mapping_detect(mapping_request).await?.into_inner();
+                mappings.insert(device.to_string(), mapping_response.memory_mapping);
+                Ok(mapping_response.memory_mapping)
+            }
         }
     }
 }
@@ -43,28 +69,33 @@ impl Connection for SNIConnection {
         for d in &response.devices {
             devices.push(Device {
                 name: d.display_name.to_string(),
-                uri: d.uri.to_string()
+                uri: d.uri.to_string(),
+                info: None
             });
         }
 
         Ok(devices)
     }
 
-    async fn read_memory(&self, device: &str, address: u32, size: u32) -> Result<Vec<u8>, ConnectionError> 
+    async fn read_single(&self, device: &str, address: u32, size: u32) -> Result<Vec<u8>, ConnectionError> {
+        Ok(self.read_multi(device, &[address, size]).await?.remove(0))
+    }
+
+    async fn read_multi(&self, device: &str, address_info: &[u32]) -> Result<Vec<Vec<u8>>, ConnectionError> 
     {
         let mut client = device_memory_client::DeviceMemoryClient::new(self.client.clone());
-        let request = tonic::Request::new(SingleReadMemoryRequest {
-            request: Some(ReadMemoryRequest {
-                request_address: address,
+        let memory_mapping = self.get_mapping(device).await?;
+        let request = tonic::Request::new(MultiReadMemoryRequest {
+            requests: address_info.chunks(2).map(|req| ReadMemoryRequest {
+                request_address: req[0],
                 request_address_space: AddressSpace::FxPakPro.into(),
-                request_memory_mapping: MemoryMapping::ExHiRom.into(),
-                size
-            }),
+                request_memory_mapping: memory_mapping,
+                size: req[1]
+            }).collect(),
             uri: device.into()
         });
 
-        let response = client.single_read(request).await?.into_inner();
-        let mem_response = response.response.ok_or("No MemoryResponse in Response")?;
-        Ok(mem_response.data)
+        let mut response = client.multi_read(request).await?.into_inner();
+        Ok(response.responses.drain(..).map(|r| r.data).collect())
     }
 }

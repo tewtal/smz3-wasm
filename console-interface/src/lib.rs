@@ -1,17 +1,16 @@
 #![allow(clippy::unused_unit)]
-
 use wasm_bindgen::prelude::*;
-use js_sys::{Promise, Uint8Array};
+use js_sys::{Promise, Uint8Array, Array};
 use protocols::protocol::{Connection, Protocol, create_connection, create_connection_with_uri};
 use wasm_bindgen_futures::{future_to_promise};
 use std::sync::{Arc};
 
 mod protocols;
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+static LOG_LEVEL: log::Level = if cfg!(debug_assertions) { log::Level::Debug } else { log::Level::Info };
 
 #[wasm_bindgen]
 pub struct ConsoleInterface {
@@ -19,13 +18,21 @@ pub struct ConsoleInterface {
 }
 
 #[wasm_bindgen]
-impl ConsoleInterface {    
+impl ConsoleInterface {
+    #[wasm_bindgen]
+    pub fn init() {
+        wasm_logger::init(wasm_logger::Config::new(LOG_LEVEL));
+    }
+
     #[wasm_bindgen(constructor)]
     pub fn new(proto: String, uri: Option<String>) -> Self {
+        
         let protocol = match proto.to_lowercase().as_str() {
             "sni" => Protocol::Sni,
             _ => Protocol::Usb2Snes,
         };
+
+        log::debug!("Created ConsoleInterface [{:?}] - {:?}", &protocol, &uri);
 
         Self {
             connection: Arc::new(
@@ -61,17 +68,27 @@ impl ConsoleInterface {
         let conn = self.connection.clone();
         future_to_promise(async move {
             let devices = conn.list_devices().await.map_err(|e| format!("Device list request failed: {:?}", e))?;
-            let js_devices = serde_wasm_bindgen::to_value(&devices).map_err(|_| JsValue::from("Could not parse device list"))?;
-            Ok(js_devices)
+            serde_wasm_bindgen::to_value(&devices).map_err(|_| JsValue::from("Could not parse device list"))
         })
     }
 
     #[wasm_bindgen]
-    pub fn read_memory(&self, device: String, address: u32, size: u32) -> Promise {
+    pub fn read(&self, device: String, address: u32, size: u32) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
-            let data = conn.read_memory(&device, address, size).await.map_err(|e| format!("Read memory request failed: {:?}", e))?;
+            let data = conn.read_single(&device, address, size).await.map_err(|e| format!("Read memory request failed: {:?}", e))?;            
             Ok(JsValue::from(Uint8Array::from(data.as_slice())))
         })
     }
+
+    #[wasm_bindgen]
+    pub fn read_multi(&self, device: String, address_info: Vec<u32>) -> Promise {
+        let conn = self.connection.clone();
+        future_to_promise(async move {
+            let data = conn.read_multi(&device, &address_info).await.map_err(|e| format!("Read memory request failed: {:?}", e))?;
+            let js_data = Array::from_iter(data.iter().map(|d| Uint8Array::from(d.as_slice())));
+            Ok(JsValue::from(js_data))
+        })
+    }
+
 }

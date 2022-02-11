@@ -3,6 +3,7 @@ use serde::Serialize;
 
 pub type ConnectionError = Box<dyn std::error::Error>;
 
+#[derive(Debug)]
 pub enum Protocol {
     Sni,
     Usb2Snes
@@ -12,6 +13,7 @@ pub enum Protocol {
 pub struct Device {
     pub name: String,
     pub uri: String,
+    pub info: Option<Vec<String>>
 } 
 
 #[async_trait(?Send)]
@@ -19,7 +21,8 @@ pub trait Connection {
     async fn connect(&self) -> Result<bool, ConnectionError>;
     async fn disconnect(&self) -> Result<bool, ConnectionError>;
     async fn list_devices(&self) -> Result<Vec<Device>, ConnectionError>;
-    async fn read_memory(&self, device: &str, address: u32, size: u32) -> Result<Vec<u8>, ConnectionError>;
+    async fn read_multi(&self, device: &str, address_info: &[u32]) -> Result<Vec<Vec<u8>>, ConnectionError>;
+    async fn read_single(&self, device: &str, address: u32, size: u32) -> Result<Vec<u8>, ConnectionError>;
 }
 
 pub fn create_connection(protocol: &Protocol) -> Box<dyn Connection> {
