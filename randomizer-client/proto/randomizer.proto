@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+option csharp_namespace = "Randomizer.Service";
+
+package randomizer;
+
+/* Define the service and messages */
+service Randomizer {
+	rpc GetSession (GetSessionRequest) returns (GetSessionReply);
+	rpc RegisterPlayer (RegisterPlayerRequest) returns (RegisterPlayerResponse);
+	rpc SendEvent (SendEventRequest) returns (SendEventResponse);
+}
+
+message GetSessionRequest {
+	string session_guid = 1;
+}
+
+message GetSessionReply {
+	string id = 1;
+	string guid = 2;
+	SessionState state = 3;
+	repeated Client clients = 4;
+}
+
+message RegisterPlayerRequest {
+	string session_guid = 1;
+	string client_id = 2;
+}
+
+message RegisterPlayerResponse {
+	bool success = 1;
+	string client_id = 2;
+	string client_guid = 3;
+}
+
+message	SendEventRequest {
+	string client_guid = 1;
+	EventType event_type = 2;
+	repeated string arguments = 3;
+}
+
+message SendEventResponse {
+	bool success = 1;
+	int64 event_id = 2;
+}
+
+enum EventType {
+	Item = 0;
+	Message = 1;
+}
+
+/* Define enums and structs */
+enum SessionState {
+	Created = 0;
+	Running = 1;
+	Done = 2;
+}
+
+enum ClientState {
+    Disconnected = 0;
+    Registering = 1;
+    Registered = 2;
+    Identifying = 3;
+    Patching = 4;
+    Ready = 5;
+    Playing = 6;
+    Completed = 7;
+}
+
+message Client {
+	string id = 1;
+	string name = 2;
+	ClientState state = 3;
+}

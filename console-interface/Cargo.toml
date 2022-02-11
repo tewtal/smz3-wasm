@@ -1,0 +1,35 @@
+[package]
+name = "console-interface"
+version = "0.1.0"
+authors = ["Thomas Backmark <total@viskos.org>"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wee_alloc = "0.4"
+ws_stream_wasm = "0.7.3"
+futures = "0.3.21"
+async-trait = { version = "0.1", default-features = false }
+tonic = { version = "0.6", default-features = false, features = ["codegen", "prost"] }
+prost = { version = "0.9", default-features = false }
+js-sys = { version = "0.3", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false }
+serde-wasm-bindgen = "0.4.2"
+wasm-bindgen = { version = "0.2", default-features = false, features = ["serde-serialize"] }
+wasm-bindgen-futures = { version = "0.4", default-features = false }
+grpc-web-client = { git = "https://github.com/titanous/grpc-web-client" }
+
+[build-dependencies]
+tonic-build = { version = "0.6", default-features = false, features = ["prost"] }
+
+[profile.release]
+lto = true
+opt-level = 'z'
+codegen-units = 1
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Oz']
+
