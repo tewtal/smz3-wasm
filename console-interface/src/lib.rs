@@ -7,8 +7,8 @@ use std::sync::{Arc};
 
 mod protocols;
 
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+// #[global_allocator]
+// static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 static LOG_LEVEL: log::Level = if cfg!(debug_assertions) { log::Level::Debug } else { log::Level::Info };
 
@@ -88,6 +88,25 @@ impl ConsoleInterface {
             let data = conn.read_multi(&device, &address_info).await.map_err(|e| format!("Read memory request failed: {:?}", e))?;
             let js_data = Array::from_iter(data.iter().map(|d| Uint8Array::from(d.as_slice())));
             Ok(JsValue::from(js_data))
+        })
+    }
+
+    #[wasm_bindgen]
+    pub fn write(&self, device: String, address: u32, data: Uint8Array) -> Promise {
+        let conn = self.connection.clone();
+        future_to_promise(async move {
+            let result = conn.write_single(&device, address, &data.to_vec()).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;            
+            Ok(JsValue::from(result))
+        })
+    }
+
+    #[wasm_bindgen]
+    pub fn write_multi(&self, device: String, addresses: Vec<u32>, data: Vec<Uint8Array>) -> Promise {
+        let conn = self.connection.clone();
+        future_to_promise(async move {
+            let data: Vec<Vec<u8>> = data.iter().map(|d| d.to_vec()).collect();
+            let result = conn.write_multi(&device, &addresses, &data).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;
+            Ok(JsValue::from(result))
         })
     }
 

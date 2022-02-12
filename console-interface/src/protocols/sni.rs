@@ -1,4 +1,5 @@
 tonic::include_proto!("_");
+
 use grpc_web_client::Client;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -97,5 +98,26 @@ impl Connection for SNIConnection {
 
         let mut response = client.multi_read(request).await?.into_inner();
         Ok(response.responses.drain(..).map(|r| r.data).collect())
+    }
+
+    async fn write_single(&self, device: &str, address: u32, data: &[u8])-> Result<bool, ConnectionError> {
+        Ok(self.write_multi(device, &[address], &[data.to_vec()]).await?)
+    }
+
+    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<bool, ConnectionError> {
+        let mut client = device_memory_client::DeviceMemoryClient::new(self.client.clone());
+        let memory_mapping = self.get_mapping(device).await?;        
+        let request = tonic::Request::new(MultiWriteMemoryRequest {
+            requests: addresses.iter().zip(data.iter()).map(|(address, data)| WriteMemoryRequest {
+                data: data.to_vec(),
+                request_address: *address,
+                request_address_space: AddressSpace::FxPakPro.into(),
+                request_memory_mapping: memory_mapping
+            }).collect(),
+            uri: device.into()        
+        });
+
+        let _ = client.multi_write(request).await?.into_inner();
+        Ok(true)
     }
 }

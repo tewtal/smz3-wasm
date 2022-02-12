@@ -1,7 +1,13 @@
+tonic::include_proto!("randomizer");
+
 use js_sys::Function;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-tonic::include_proto!("randomizer");
+
+// Re-export ConsoleInterface from this crate for manual use if needed
+pub use console_interface::ConsoleInterface;
+
+mod clients;
 
 // Use `wee_alloc` as the global allocator.
 #[global_allocator]

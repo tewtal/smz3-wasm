@@ -23,6 +23,8 @@ pub trait Connection {
     async fn list_devices(&self) -> Result<Vec<Device>, ConnectionError>;
     async fn read_multi(&self, device: &str, address_info: &[u32]) -> Result<Vec<Vec<u8>>, ConnectionError>;
     async fn read_single(&self, device: &str, address: u32, size: u32) -> Result<Vec<u8>, ConnectionError>;
+    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<bool, ConnectionError>;
+    async fn write_single(&self, device: &str, address: u32, data: &[u8]) -> Result<bool, ConnectionError>;
 }
 
 pub fn create_connection(protocol: &Protocol) -> Box<dyn Connection> {

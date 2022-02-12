@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from 'react-dom';
 import App from './app'
-import { ConsoleInterface } from 'console-interface';
+import { ConsoleInterface } from 'randomizer-client';
 
 /* Initialize console interface wasm module */
 ConsoleInterface.init();

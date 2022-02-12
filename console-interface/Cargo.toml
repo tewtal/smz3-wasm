@@ -5,7 +5,7 @@ authors = ["Thomas Backmark <total@viskos.org>"]
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wee_alloc = "0.4"
