@@ -100,11 +100,11 @@ impl Connection for SNIConnection {
         Ok(response.responses.drain(..).map(|r| r.data).collect())
     }
 
-    async fn write_single(&self, device: &str, address: u32, data: &[u8])-> Result<bool, ConnectionError> {
+    async fn write_single(&self, device: &str, address: u32, data: &[u8])-> Result<(), ConnectionError> {
         Ok(self.write_multi(device, &[address], &[data.to_vec()]).await?)
     }
 
-    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<bool, ConnectionError> {
+    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<(), ConnectionError> {
         let mut client = device_memory_client::DeviceMemoryClient::new(self.client.clone());
         let memory_mapping = self.get_mapping(device).await?;        
         let request = tonic::Request::new(MultiWriteMemoryRequest {
@@ -118,6 +118,6 @@ impl Connection for SNIConnection {
         });
 
         let _ = client.multi_write(request).await?.into_inner();
-        Ok(true)
+        Ok(())
     }
 }

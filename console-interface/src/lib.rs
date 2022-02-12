@@ -95,8 +95,8 @@ impl ConsoleInterface {
     pub fn write(&self, device: String, address: u32, data: Uint8Array) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
-            let result = conn.write_single(&device, address, &data.to_vec()).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;            
-            Ok(JsValue::from(result))
+            conn.write_single(&device, address, &data.to_vec()).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;            
+            Ok(JsValue::TRUE)
         })
     }
 
@@ -105,8 +105,8 @@ impl ConsoleInterface {
         let conn = self.connection.clone();
         future_to_promise(async move {
             let data: Vec<Vec<u8>> = data.iter().map(|d| d.to_vec()).collect();
-            let result = conn.write_multi(&device, &addresses, &data).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;
-            Ok(JsValue::from(result))
+            conn.write_multi(&device, &addresses, &data).await.map_err(|e| format!("Write memory request failed: {:?}", e))?;
+            Ok(JsValue::TRUE)
         })
     }
 

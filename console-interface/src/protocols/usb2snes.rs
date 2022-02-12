@@ -51,10 +51,10 @@ enum Command {
     Stream,
     Fence,
     GetAddress(Vec<String>),
-    PutAddress(Vec<String>),
+    PutAddress(Vec<String>, Vec<u8>),
     PutIPS,
     GetFile(String),
-    PutFile(Vec<String>),
+    PutFile(Vec<String>, Vec<u8>),
     List(String),
     Remove(String),
     Rename(Vec<String>),
@@ -126,7 +126,7 @@ impl Usb2SnesConnection {
                     sock.wsio = None;
                     sock.state = ConnectionState::Disconnected;
                     sock.device = String::new();
-                    log::debug!("usb2snes: WebSocket disconnected, retrying connection");
+                    log::info!("usb2snes: WebSocket disconnected, retrying connection");
                 }
             }
             
@@ -170,12 +170,12 @@ impl Usb2SnesConnection {
         let mut sock = sock_l.lock().await;
         let wsio = sock.wsio.as_mut().ok_or("Could not get websocket")?;
         
-        let (opcode, operands, flags, space, response_type) = match command {
-            Command::DeviceList =>          ("DeviceList", None, None, "SNES", CommandResponseType::Text),
-            Command::Info =>                ("Info", None, None, "SNES", CommandResponseType::Text),
-            Command::AppVersion =>          ("AppVersion", None, None, "SNES", CommandResponseType::Text),
-            Command::PutAddress(addrs) =>   ("PutAddress", Some(addrs), Some(vec!["NORESP".to_string()]), "SNES", CommandResponseType::None),
-            Command::GetAddress(addrs) =>   { let size = self.get_size(&addrs)?; ("GetAddress", Some(addrs), Some(vec!["NORESP".to_string()]), "SNES", CommandResponseType::Binary(size)) },
+        let (opcode, operands, flags, space, response_type) = match &command {
+            Command::DeviceList =>                  ("DeviceList", None, None, "SNES", CommandResponseType::Text),
+            Command::Info =>                        ("Info", None, None, "SNES", CommandResponseType::Text),
+            Command::AppVersion =>                  ("AppVersion", None, None, "SNES", CommandResponseType::Text),
+            Command::PutAddress(addrs, _) =>        ("PutAddress", Some(addrs), None, "SNES", CommandResponseType::None),
+            Command::GetAddress(addrs) =>           { let size = self.get_size(&addrs)?; ("GetAddress", Some(addrs), None, "SNES", CommandResponseType::Binary(size)) },
             _ => return Err(format!("Attempted to use unsupported command: {:?}", &command).into())
         };
 
@@ -185,14 +185,15 @@ impl Usb2SnesConnection {
                     Opcode: opcode.into(),
                     Space: space.into(),
                     Flags: flags,
-                    Operands: operands
+                    Operands: operands.cloned()
                 }
             )?
         )).await?;
 
         let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;
 
-        Ok(match response_type {
+        // Read the response if needed
+        let response = match response_type {
             CommandResponseType::None => CommandResponse::Empty,
             CommandResponseType::Text => {
                 let response = wsio.next().await.ok_or("Could not read response data")?;
@@ -203,17 +204,28 @@ impl Usb2SnesConnection {
             },
             CommandResponseType::Binary(size) => {
                 log::debug!("usb2snes: Reading binary data with size: {:X}", size);
-                let mut data: Vec<u8> = Vec::new();
-                while data.len() < size {
+                let mut resp_data: Vec<u8> = Vec::new();
+                while resp_data.len() < size {
                     let response = wsio.next().await.ok_or("Error while reading binary response")?;    
                     match response {
-                        WsMessage::Binary(mut d) => data.append(&mut d),
+                        WsMessage::Binary(mut d) => resp_data.append(&mut d),
                         _ => return Err("Got text data when expecting binary data".into())
                     }
                 }
-                CommandResponse::Data(data)
+                CommandResponse::Data(resp_data)
             }
-       })       
+        };
+
+        // Send any binary data that might be included in a command
+        match command {
+            Command::PutAddress(_, d) | Command::PutFile(_, d) => {
+                wsio.send(WsMessage::Binary(d)).await?;
+                let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;           
+            },
+            _ => ()
+        };
+
+        Ok(response)
     }
 }
 
@@ -228,7 +240,7 @@ impl Connection for Usb2SnesConnection {
             sock.ws = Some(ws);
             sock.wsio = Some(wsio);
             sock.state = ConnectionState::Connected;
-            log::debug!("usb2snes: Connected to {}", &self.uri);
+            log::info!("usb2snes: Connected to {}", &self.uri);
         }
 
         Ok(true)
@@ -313,61 +325,36 @@ impl Connection for Usb2SnesConnection {
         }
     }
    
-    async fn write_single(&self, device: &str, address: u32, data: &[u8])-> Result<bool, ConnectionError> {
+    async fn write_single(&self, device: &str, address: u32, data: &[u8])-> Result<(), ConnectionError> {
         Ok(self.write_multi(device, &[address], &[data.to_vec()]).await?)
     }
     
     // Issue a vectored write, translated to a VPUT if possible
     // The usb2snes protocol doesn't officially support VPUT requests larger than 255 bytes, so if the sum
     // of bytes to send is larger than 255 bytes, split each VPUT request into single PUT requests.
-    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<bool, ConnectionError> {
+    async fn write_multi(&self, device: &str, addresses: &[u32], data: &[Vec<u8>]) -> Result<(), ConnectionError> {
         match data.iter().map(|d| d.len()).sum::<usize>() {
             req_size if addresses.len() >= 2 && addresses.len() <= 8 && req_size < 256 => {
                 let address_info = addresses.iter().zip(data.iter().map(|d| d.len() as u32)).flat_map(|(a, s)| vec![format!("{:X}", a), format!("{:X}", s)]).collect();
-                match self.send_command(Some(device), Command::PutAddress(address_info)).await? {
-                    CommandResponse::Empty => {
-                        log::debug!("usb2snes: Sending binary data of size: {:X}", req_size);
-                        
-                        {
-                            let sock_l = self.socket.clone();
-                            let mut sock = sock_l.lock().await;
-                            let wsio = sock.wsio.as_mut().ok_or("Could not get websocket io")?;
-                            wsio.send(WsMessage::Binary(data.iter().flat_map(|d| d.clone()).collect::<Vec<u8>>())).await?;
-                            let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;
-                        }
-
-                        // Silly workaround for the WASM websocket library that can't detect if we're disconnected without reading.
-                        // So let's send an AppVersion command to force the issue and detect if we're still connected.
-                        // If we're disconnected it'll trigger an error so the caller can know that the transfer most likely did not go through.
-                        let _ = self.send_command(None, Command::AppVersion).await?;                        
-
-                        Ok(true)
-                    },
-                    _ => Err("Unexpected PutAddress response".into())
+                match self.send_command(Some(device), Command::PutAddress(address_info, data.iter().flat_map(|d| d.clone()).collect::<Vec<u8>>())).await? {
+                    CommandResponse::Empty => (),
+                    _ => return Err("Unexpected PutAddress response".into())
                 }
             },
             _ => {
                 for (address, data) in addresses.iter().zip(data.iter()) {
-                    match self.send_command(Some(device), Command::PutAddress(vec![format!("{:X}", address), format!("{:X}", data.len())])).await? {
-                        CommandResponse::Empty => {
-                            log::debug!("usb2snes: Sending binary data of size: {:X}", &data.len());
-                            let sock_l = self.socket.clone();
-                            let mut sock = sock_l.lock().await;
-                            let wsio = sock.wsio.as_mut().ok_or("Could not get websocket io")?;
-                            wsio.send(WsMessage::Binary(data.to_vec())).await?;
-                            let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;                          
-                        },
+                    match self.send_command(Some(device), Command::PutAddress(vec![format!("{:X}", address), format!("{:X}", data.len())], data.to_vec())).await? {
+                        CommandResponse::Empty => (),
                         _ => return Err("Unexpected PutAddress response".into())
                     }
                 }
-  
-                // Silly workaround for the WASM websocket library that can't detect if we're disconnected without reading.
-                // So let's send an AppVersion command to force the issue and detect if we're still connected.
-                // If we're disconnected it'll trigger an error so the caller can know that the transfer most likely did not go through.
-                let _ = self.send_command(None, Command::AppVersion).await?;
-
-                Ok(true)
             }
-        }
+        };
+
+        // Silly workaround for the WASM websocket library that can't detect if we're disconnected without reading.
+        // So let's send an AppVersion command to force the issue and detect if we're still connected.
+        // If we're disconnected it'll trigger an error so the caller can know that the transfer most likely did not go through.
+        let _ = self.send_command(None, Command::AppVersion).await?;
+        Ok(())
     }
 }
