@@ -2,13 +2,15 @@
 name = "randomizer-client"
 version = "0.1.0"
 authors = ["Thomas Backmark <total@viskos.org>"]
-edition = "2021"
+edition = "2018"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 wee_alloc = "0.4"
+futures = "0.3.21"
+futures-locks = "0.7.0"
 async-trait = { version = "0.1", default-features = false }
 tonic = { version = "0.6", default-features = false, features = ["codegen", "prost"] }
 prost = { version = "0.9", default-features = false }
@@ -20,6 +22,8 @@ wasm-bindgen = { version = "0.2", default-features = false, features = ["serde-s
 wasm-bindgen-futures = { version = "0.4", default-features = false }
 grpc-web-client = { git = "https://github.com/titanous/grpc-web-client" }
 console-interface = { path = "../console-interface" }
+log = "0.4.6"
+wasm-logger = "0.2.0"
 
 [build-dependencies]
 tonic-build = { version = "0.6", default-features = false, features = ["prost"] }

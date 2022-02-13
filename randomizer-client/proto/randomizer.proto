@@ -5,9 +5,19 @@ option csharp_namespace = "Randomizer.Service";
 package randomizer;
 
 /* Define the service and messages */
-service Randomizer {
-	rpc GetSession (GetSessionRequest) returns (GetSessionReply);
+service Session {
+	rpc GetSession (GetSessionRequest) returns (GetSessionResponse);
 	rpc RegisterPlayer (RegisterPlayerRequest) returns (RegisterPlayerResponse);
+	rpc LoginPlayer (LoginPlayerRequest) returns (RegisterPlayerResponse);
+}
+
+service Metadata {
+	rpc GetPatch (GetPatchRequest) returns (GetPatchResponse);
+	rpc GetSpoiler (GetSpoilerRequest) returns (GetSpoilerResponse);
+}
+
+service Event {
+	rpc GetEvents (GetEventsRequest) returns (GetEventsRequest);
 	rpc SendEvent (SendEventRequest) returns (SendEventResponse);
 }
 
@@ -15,33 +25,61 @@ message GetSessionRequest {
 	string session_guid = 1;
 }
 
-message GetSessionReply {
-	string id = 1;
+message GetSessionResponse {
+	int32 id = 1;
 	string guid = 2;
 	SessionState state = 3;
-	repeated Client clients = 4;
+	Seed seed = 4;
 }
 
 message RegisterPlayerRequest {
 	string session_guid = 1;
-	string client_id = 2;
+	int32 world_id = 2;
 }
 
 message RegisterPlayerResponse {
-	bool success = 1;
-	string client_id = 2;
-	string client_guid = 3;
+	int32 client_id = 1;
+	string client_guid = 2;
+	string client_token = 3;
+}
+
+message LoginPlayerRequest {
+	string session_guid = 1;
+	string client_guid = 2;
+}
+
+message GetPatchRequest {
+	string client_token = 1;
+}
+
+message GetPatchResponse {
+	bytes patch_data = 1;
+}
+
+message GetSpoilerRequest {
+	string client_token = 1;
+}
+
+message GetSpoilerResponse {
+	string spoiler = 1;
+}
+
+message GetEventsRequest {
+	string client_token = 1;
+}
+
+message GetEventsResponse {
+	repeated int32 event_id = 1;
 }
 
 message	SendEventRequest {
-	string client_guid = 1;
+	string client_token = 1;
 	EventType event_type = 2;
 	repeated string arguments = 3;
 }
 
 message SendEventResponse {
-	bool success = 1;
-	int64 event_id = 2;
+	int32 event_id = 1;
 }
 
 enum EventType {
@@ -67,8 +105,24 @@ enum ClientState {
     Completed = 7;
 }
 
-message Client {
-	string id = 1;
-	string name = 2;
-	ClientState state = 3;
+message Seed {
+	int32 id = 1;
+	string guid = 2;
+	string number = 3;
+	string hash = 4;
+	int32 players = 5;
+	string game_mode = 6;
+	string game_name = 7;
+	string game_version = 8;
+	string game_id = 9;
+	repeated World worlds = 10;
+}
+
+message World {
+	int32 id = 1;
+	string guid = 2;
+	int32 world_id = 3;
+	string player_name = 4;
+	string settings = 5;
+	ClientState client_state = 6;
 }

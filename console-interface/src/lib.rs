@@ -3,9 +3,10 @@ use wasm_bindgen::prelude::*;
 use js_sys::{Promise, Uint8Array, Array};
 use protocols::protocol::{Connection, Protocol, create_connection, create_connection_with_uri};
 use wasm_bindgen_futures::{future_to_promise};
+use std::iter::FromIterator;
 use std::sync::{Arc};
 
-mod protocols;
+pub mod protocols;
 
 // #[global_allocator]
 // static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
@@ -26,7 +27,6 @@ impl ConsoleInterface {
 
     #[wasm_bindgen(constructor)]
     pub fn new(proto: String, uri: Option<String>) -> Self {
-        
         let protocol = match proto.to_lowercase().as_str() {
             "sni" => Protocol::Sni,
             _ => Protocol::Usb2Snes,
@@ -45,7 +45,6 @@ impl ConsoleInterface {
         }
     }
 
-    #[wasm_bindgen]
     pub fn connect(&self) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -54,7 +53,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn disconnect(&self) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -63,7 +61,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn list_devices(&self) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -72,7 +69,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn read(&self, device: String, address: u32, size: u32) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -81,7 +77,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn read_multi(&self, device: String, address_info: Vec<u32>) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -91,7 +86,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn write(&self, device: String, address: u32, data: Uint8Array) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -100,7 +94,6 @@ impl ConsoleInterface {
         })
     }
 
-    #[wasm_bindgen]
     pub fn write_multi(&self, device: String, addresses: Vec<u32>, data: Vec<Uint8Array>) -> Promise {
         let conn = self.connection.clone();
         future_to_promise(async move {
@@ -109,5 +102,4 @@ impl ConsoleInterface {
             Ok(JsValue::TRUE)
         })
     }
-
 }

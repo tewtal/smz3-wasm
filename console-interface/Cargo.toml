@@ -2,7 +2,7 @@
 name = "console-interface"
 version = "0.1.0"
 authors = ["Thomas Backmark <total@viskos.org>"]
-edition = "2021"
+edition = "2018"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
