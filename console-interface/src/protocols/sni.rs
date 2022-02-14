@@ -34,7 +34,7 @@ impl SNIConnection {
                     uri: device.into()
                 });
 
-                let mapping_response = client.mapping_detect(mapping_request).await?.into_inner();
+                let mapping_response = client.mapping_detect(mapping_request).await.map_err(|_| ConnectionError("Mapping detection failed".into()))?.into_inner();
                 mappings.insert(device.to_string(), mapping_response.memory_mapping);
                 Ok(mapping_response.memory_mapping)
             }
@@ -65,7 +65,7 @@ impl Connection for SNIConnection {
             kinds: vec![]
         });
     
-        let response = client.list_devices(request).await?;
+        let response = client.list_devices(request).await.map_err(|_| ConnectionError("Could not list devices".into()))?;
         let response = response.into_inner();
         for d in &response.devices {
             devices.push(Device {
@@ -96,7 +96,7 @@ impl Connection for SNIConnection {
             uri: device.into()
         });
 
-        let mut response = client.multi_read(request).await?.into_inner();
+        let mut response = client.multi_read(request).await.map_err(|_| ConnectionError("Multi-read failed".into()))?.into_inner();
         Ok(response.responses.drain(..).map(|r| r.data).collect())
     }
 
@@ -117,7 +117,7 @@ impl Connection for SNIConnection {
             uri: device.into()        
         });
 
-        let _ = client.multi_write(request).await?.into_inner();
+        let _ = client.multi_write(request).await.map_err(|_| ConnectionError("Multi-write failed".into()))?.into_inner();
         Ok(())
     }
 }

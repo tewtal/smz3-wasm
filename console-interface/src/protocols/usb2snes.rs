@@ -2,7 +2,7 @@ use ws_stream_wasm::*;
 use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 use futures::{stream::StreamExt, SinkExt};
-use std::{sync::Arc, num::ParseIntError};
+use std::{sync::Arc};
 use futures::lock::Mutex;
 use crate::protocols::protocol::{Device, Connection, ConnectionError};
 
@@ -99,11 +99,12 @@ impl Usb2SnesConnection {
     async fn attach(&self, device: &str) -> Result<bool, ConnectionError> {
         let sock_l = self.socket.clone();
         let mut sock = sock_l.lock().await;
-        let wsio = sock.wsio.as_mut().ok_or("Could not get websocket")?;
+        let wsio = sock.wsio.as_mut().ok_or(ConnectionError("Could not get websocket".into()))?;
 
         let _ = wsio.send(WsMessage::Text(
-            serde_json::to_string(&SnesRequest { Opcode: "Attach".into(), Space: "SNES".into(), Flags: None, Operands: Some(vec![device.to_string()]) })?
-        )).await.map_err(|_| "Could not send attach request")?;
+            serde_json::to_string(&SnesRequest { Opcode: "Attach".into(), Space: "SNES".into(), Flags: None, Operands: Some(vec![device.to_string()]) })
+            .map_err(|_| ConnectionError("Could not send attach request".into()))?
+        )).await.map_err(|_| ConnectionError("Could not send attach request".into()))?;
         
         sock.state = ConnectionState::Attached;
         sock.device = device.to_string();
@@ -150,14 +151,14 @@ impl Usb2SnesConnection {
         }
     }
 
-    fn get_size(&self, addrs: &[String]) -> Result<usize, ParseIntError>  {
+    fn get_size(&self, addrs: &[String]) -> Result<usize, ConnectionError>  {
         addrs
         .iter()
         .skip(1)
         .step_by(2)
         .fold(Ok(0), |acc, size| {
             match acc {
-                Ok(acc) => Ok(usize::from_str_radix(size, 16)? + acc),
+                Ok(acc) => Ok(usize::from_str_radix(size, 16).map_err(|_| ConnectionError("Could not get data size for request".into()))? + acc),
                 Err(e) => Err(e)
             }
         })
@@ -168,7 +169,7 @@ impl Usb2SnesConnection {
         log::debug!("usb2snes: Sending command: {:?}", &command);
         let sock_l = self.socket.clone();
         let mut sock = sock_l.lock().await;
-        let wsio = sock.wsio.as_mut().ok_or("Could not get websocket")?;
+        let wsio = sock.wsio.as_mut().ok_or(ConnectionError("Could not get websocket".into()))?;
         
         let (opcode, operands, flags, space, response_type) = match &command {
             Command::DeviceList =>                  ("DeviceList", None, None, "SNES", CommandResponseType::Text),
@@ -176,7 +177,7 @@ impl Usb2SnesConnection {
             Command::AppVersion =>                  ("AppVersion", None, None, "SNES", CommandResponseType::Text),
             Command::PutAddress(addrs, _) =>        ("PutAddress", Some(addrs), None, "SNES", CommandResponseType::None),
             Command::GetAddress(addrs) =>           { let size = self.get_size(&addrs)?; ("GetAddress", Some(addrs), None, "SNES", CommandResponseType::Binary(size)) },
-            _ => return Err(format!("Attempted to use unsupported command: {:?}", &command).into())
+            _ => return Err(ConnectionError(format!("Attempted to use unsupported command: {:?}", &command).into()))
         };
 
         let _ = wsio.send(WsMessage::Text(
@@ -187,29 +188,29 @@ impl Usb2SnesConnection {
                     Flags: flags,
                     Operands: operands.cloned()
                 }
-            )?
-        )).await?;
+            ).map_err(|_| ConnectionError("Could not send device command".into()))?
+        )).await.map_err(|_| ConnectionError("Could not send device command".into()))?;
 
-        let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;
+        let _ = wsio.flush().await.map_err(|_| ConnectionError("Could not flush data".into()))?;
 
         // Read the response if needed
         let response = match response_type {
             CommandResponseType::None => CommandResponse::Empty,
             CommandResponseType::Text => {
-                let response = wsio.next().await.ok_or("Could not read response data")?;
+                let response = wsio.next().await.ok_or(ConnectionError("Could not read response data".into()))?;
                 match response {
-                    WsMessage::Text(t) => CommandResponse::Response(serde_json::from_str(&t)?),
-                    _ => return Err("Got binary response when expecting a text response".into())
+                    WsMessage::Text(t) => CommandResponse::Response(serde_json::from_str(&t).map_err(|_| ConnectionError("Could not read command response".into()))?),
+                    _ => return Err(ConnectionError("Got binary response when expecting a text response".into()))
                 }
             },
             CommandResponseType::Binary(size) => {
                 log::debug!("usb2snes: Reading binary data with size: {:X}", size);
                 let mut resp_data: Vec<u8> = Vec::new();
                 while resp_data.len() < size {
-                    let response = wsio.next().await.ok_or("Error while reading binary response")?;    
+                    let response = wsio.next().await.ok_or(ConnectionError("Error while reading binary response".into()))?;    
                     match response {
                         WsMessage::Binary(mut d) => resp_data.append(&mut d),
-                        _ => return Err("Got text data when expecting binary data".into())
+                        _ => return Err(ConnectionError("Got text data when expecting binary data".into()))
                     }
                 }
                 CommandResponse::Data(resp_data)
@@ -219,8 +220,8 @@ impl Usb2SnesConnection {
         // Send any binary data that might be included in a command
         match command {
             Command::PutAddress(_, d) | Command::PutFile(_, d) => {
-                wsio.send(WsMessage::Binary(d)).await?;
-                let _ = wsio.flush().await.map_err(|_| "Could not flush data")?;           
+                wsio.send(WsMessage::Binary(d)).await.map_err(|_| ConnectionError("Could not send binary data".into()))?;
+                let _ = wsio.flush().await.map_err(|_| ConnectionError("Could not flush data".into()))?;           
             },
             _ => ()
         };
@@ -233,7 +234,7 @@ impl Usb2SnesConnection {
 impl Connection for Usb2SnesConnection {
     
     async fn connect(&self) -> Result<bool, ConnectionError> {
-        let (ws, wsio) = WsMeta::connect(&self.uri, None).await?;
+        let (ws, wsio) = WsMeta::connect(&self.uri, None).await.map_err(|_| ConnectionError("Could not connect to websocket".into()))?;
         {
             let sock_l = self.socket.clone();
             let mut sock = sock_l.lock().await;
@@ -250,7 +251,7 @@ impl Connection for Usb2SnesConnection {
         let sock_l = self.socket.clone();
         let mut sock = sock_l.lock().await;
         if let Some(ws) = sock.ws.as_ref() {
-            ws.close().await?;
+            ws.close().await.map_err(|_| ConnectionError("Could not close websocket".into()))?;
             sock.ws = None;
             sock.wsio = None;
             sock.state = ConnectionState::Disconnected;
@@ -276,13 +277,13 @@ impl Connection for Usb2SnesConnection {
                                 info: Some(i.Results)
                             }
                         },
-                        _ => return Err("Unexpected Info response".into())
+                        _ => return Err(ConnectionError("Unexpected Info response".into()))
                     });                    
                 }
 
                 Ok(devices)
             },
-            _ => Err("Unexpected DeviceList response".into())
+            _ => Err(ConnectionError("Unexpected DeviceList response".into()))
         }
     }
 
@@ -309,7 +310,7 @@ impl Connection for Usb2SnesConnection {
         
                         Ok(data)
                     },
-                    _ => Err("Unexpected ReadMemory response".into())
+                    _ => Err(ConnectionError("Unexpected ReadMemory response".into()))
                 }
             },
             _ => {
@@ -317,7 +318,7 @@ impl Connection for Usb2SnesConnection {
                 for addr_chunk in address_info.chunks(2) {
                     match self.send_command(Some(device), Command::GetAddress(addr_chunk.iter().map(|a| format!("{:X}", a)).collect())).await? {
                         CommandResponse::Data(response) => data.push(response),
-                        _ => return Err("Unexpected ReadMemory response".into())
+                        _ => return Err(ConnectionError("Unexpected ReadMemory response".into()))
                     }
                 };
                 Ok(data)
@@ -338,14 +339,14 @@ impl Connection for Usb2SnesConnection {
                 let address_info = addresses.iter().zip(data.iter().map(|d| d.len() as u32)).flat_map(|(a, s)| vec![format!("{:X}", a), format!("{:X}", s)]).collect();
                 match self.send_command(Some(device), Command::PutAddress(address_info, data.iter().flat_map(|d| d.clone()).collect::<Vec<u8>>())).await? {
                     CommandResponse::Empty => (),
-                    _ => return Err("Unexpected PutAddress response".into())
+                    _ => return Err(ConnectionError("Unexpected PutAddress response".into()))
                 }
             },
             _ => {
                 for (address, data) in addresses.iter().zip(data.iter()) {
                     match self.send_command(Some(device), Command::PutAddress(vec![format!("{:X}", address), format!("{:X}", data.len())], data.to_vec())).await? {
                         CommandResponse::Empty => (),
-                        _ => return Err("Unexpected PutAddress response".into())
+                        _ => return Err(ConnectionError("Unexpected PutAddress response".into()))
                     }
                 }
             }

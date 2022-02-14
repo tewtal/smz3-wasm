@@ -14,6 +14,7 @@ futures-locks = "0.7.0"
 async-trait = { version = "0.1", default-features = false }
 tonic = { version = "0.6", default-features = false, features = ["codegen", "prost"] }
 prost = { version = "0.9", default-features = false }
+prost-types = { version = "0.9", default-features = false }
 js-sys = { version = "0.3", default-features = false }
 web-sys = { version = "0.3", default-features = false, features = ["Window"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }

@@ -1,7 +1,22 @@
+use core::fmt;
+
 use async_trait::async_trait;
 use serde::Serialize;
 
-pub type ConnectionError = Box<dyn std::error::Error>;
+#[derive(Debug)]
+pub struct ConnectionError(pub String);
+
+impl std::error::Error for ConnectionError { }
+impl fmt::Display for ConnectionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ConnectionError: {}", self.0)
+    }
+}
+
+
+//pub type ConnectionError = Box<dyn std::error::Error>;
+
+
 
 #[derive(Debug)]
 pub enum Protocol {

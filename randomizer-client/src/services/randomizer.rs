@@ -57,6 +57,59 @@ impl RandomizerService {
         let response = client.get_patch(request).await?.into_inner();
         Ok(response)
     }
+
+    pub async fn _get_spoiler(&self, client_token: &str) -> Result<GetSpoilerResponse, tonic::Status> {
+        let mut client = metadata_client::MetadataClient::new(self.client.clone());
+
+        let request = tonic::Request::new(GetSpoilerRequest {
+            client_token: client_token.to_string()
+        });
+
+        let response = client.get_spoiler(request).await?.into_inner();
+        Ok(response)
+    }
+
+    pub async fn get_events(&self, client_token: &str, event_types: &[i32], 
+                                   from_event_id: Option<i32>, to_event_id: Option<i32>,
+                                   from_world_id: Option<i32>, to_world_id: Option<i32>) -> Result<GetEventsResponse, tonic::Status> 
+    {        
+        let mut client = event_client::EventClient::new(self.client.clone());
+        let request = tonic::Request::new(GetEventsRequest {
+            client_token: client_token.to_string(),
+            from_event_id,
+            to_event_id,
+            from_world_id,
+            to_world_id,
+            event_types: event_types.to_vec()
+        });
+
+        let response = client.get_events(request).await?.into_inner();
+        Ok(response)
+    }
+
+    pub async fn _send_event(&self, client_token: &str, session_event: SessionEvent) -> Result<SendEventResponse, tonic::Status> {
+        let mut client = event_client::EventClient::new(self.client.clone());
+        
+        let request = tonic::Request::new(SendEventRequest {
+            client_token: client_token.to_string(),
+            event: Some(session_event)
+        });
+
+        let response = client.send_event(request).await?.into_inner();
+        Ok(response)
+    }
+
+    pub async fn _confirm_events(&self, client_token: &str, events_ids: &[i32])-> Result<ConfirmEventsResponse, tonic::Status> {
+        let mut client = event_client::EventClient::new(self.client.clone());
+
+        let request = tonic::Request::new(ConfirmEventsRequest {
+            client_token: client_token.to_string(),
+            event_ids: events_ids.to_vec()
+        });
+
+        let response = client.confirm_events(request).await?.into_inner();
+        Ok(response)
+    }
 }
 
 
