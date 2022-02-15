@@ -32,7 +32,7 @@ function App(props: any) {
 
 
     const initializeSession = async () => {
-        const client = randomizer_client.current ?? (randomizer_client.current = new RandomizerClient("https://localhost:7108", "144eac688e144d70bab61e5ab35de8fa", handleMessage));
+        const client = randomizer_client.current ?? (randomizer_client.current = new RandomizerClient("https://localhost:7108", "9c1774a1a9e5482caa08ac4213ac75a3", handleMessage));
         try {
             await client.initialize();
             setState(ConnectionState.Initialized);
@@ -46,7 +46,8 @@ function App(props: any) {
     const loginSession = async () => {
         const client = randomizer_client.current;
         try {
-            await client.login_player("00939972f1d444eda94b70d8806b686d");
+            await client.login_player("8bb3d2add5124dfb91e64109a45c7967");
+            //await client.register_player(0);
             setState(ConnectionState.Authenticated);
             setErrorMsg(null);
         } catch (e) {

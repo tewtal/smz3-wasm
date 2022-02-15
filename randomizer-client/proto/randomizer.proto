@@ -41,6 +41,7 @@ message RegisterPlayerResponse {
 	int32 client_id = 1;
 	string client_guid = 2;
 	string client_token = 3;
+	int32 world_id = 4;
 }
 
 message LoginPlayerRequest {

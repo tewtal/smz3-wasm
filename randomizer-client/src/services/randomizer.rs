@@ -87,7 +87,7 @@ impl RandomizerService {
         Ok(response)
     }
 
-    pub async fn _send_event(&self, client_token: &str, session_event: SessionEvent) -> Result<SendEventResponse, tonic::Status> {
+    pub async fn send_event(&self, client_token: &str, session_event: SessionEvent) -> Result<SendEventResponse, tonic::Status> {
         let mut client = event_client::EventClient::new(self.client.clone());
         
         let request = tonic::Request::new(SendEventRequest {
@@ -99,7 +99,7 @@ impl RandomizerService {
         Ok(response)
     }
 
-    pub async fn _confirm_events(&self, client_token: &str, events_ids: &[i32])-> Result<ConfirmEventsResponse, tonic::Status> {
+    pub async fn confirm_events(&self, client_token: &str, events_ids: &[i32])-> Result<ConfirmEventsResponse, tonic::Status> {
         let mut client = event_client::EventClient::new(self.client.clone());
 
         let request = tonic::Request::new(ConfirmEventsRequest {

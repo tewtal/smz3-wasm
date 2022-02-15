@@ -1,3 +1,4 @@
+#![allow(clippy::unused_unit)]
 use futures_locks::RwLock;
 use js_sys::{Promise, Function};
 use wasm_bindgen::prelude::*;
