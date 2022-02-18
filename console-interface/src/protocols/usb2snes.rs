@@ -127,7 +127,7 @@ impl Usb2SnesConnection {
                     sock.wsio = None;
                     sock.state = ConnectionState::Disconnected;
                     sock.device = String::new();
-                    log::info!("usb2snes: WebSocket disconnected, retrying connection");
+                    log::debug!("usb2snes: WebSocket disconnected, retrying connection");
                 }
             }
             
@@ -241,7 +241,7 @@ impl Connection for Usb2SnesConnection {
             sock.ws = Some(ws);
             sock.wsio = Some(wsio);
             sock.state = ConnectionState::Connected;
-            log::info!("usb2snes: Connected to {}", &self.uri);
+            log::debug!("usb2snes: Connected to {}", &self.uri);
         }
 
         Ok(true)

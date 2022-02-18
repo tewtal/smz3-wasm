@@ -47,6 +47,19 @@ impl RandomizerService {
         Ok(response)
     }
 
+    pub async fn unregister_player(&self, client_token: &str) -> Result<UnregisterPlayerResponse, tonic::Status> {
+        let mut client = session_client::SessionClient::new(self.client.clone());
+
+        let request = tonic::Request::new(UnregisterPlayerRequest {
+            client_token: client_token.to_string(),
+            sram_backup: None
+        });
+
+        let response = client.unregister_player(request).await?.into_inner();
+        Ok(response)
+
+    }
+
     pub async fn get_patch(&self, client_token: &str) -> Result<GetPatchResponse, tonic::Status> {
         let mut client = metadata_client::MetadataClient::new(self.client.clone());
         
@@ -85,6 +98,21 @@ impl RandomizerService {
 
         let response = client.get_events(request).await?.into_inner();
         Ok(response)
+    }
+
+    pub async fn get_report(&self, client_token: &str, seed_id: i32, from_event_id: i32, world_id: i32, event_types: &[i32]) -> Result<GetReportResponse, tonic::Status>
+    {
+        let mut client = event_client::EventClient::new(self.client.clone());
+        let request = tonic::Request::new(GetReportRequest {
+            client_token: client_token.to_string(),
+            seed_id,
+            from_event_id,
+            world_id,
+            event_types: event_types.to_vec()
+        });
+
+        let response = client.get_report(request).await?.into_inner();
+        Ok(response)        
     }
 
     pub async fn send_event(&self, client_token: &str, session_event: SessionEvent) -> Result<SendEventResponse, tonic::Status> {

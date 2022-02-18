@@ -17,17 +17,30 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 static LOG_LEVEL: log::Level = if cfg!(debug_assertions) { log::Level::Debug } else { log::Level::Info };
 
 #[wasm_bindgen]
+extern "C" {
+    // Use `js_namespace` here to bind `console.log(..)` instead of just
+    // `log(..)`
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+#[wasm_bindgen]
+#[derive(Copy, Clone)]
 pub enum Message {
-    ConsoleDisconnected,
-    ConsoleReconnecting,
-    ConsoleConnected,
-    ConsoleError
+    ConsoleDisconnected = 0,
+    ConsoleReconnecting = 1,
+    ConsoleConnected = 2,
+    ConsoleError = 3,
+    GameState = 4,
+    ItemFound = 5,
+    ItemReceived = 6,
+    ItemsConfirmed = 7,
 }
 impl Message {
     // Send a message to a JS callback that something has happened
-    pub async fn send(callback: &Function, message: Message, args: Option<&[&str]>) {
+    pub fn send(&self, callback: &Function, args: Option<&[&str]>) {
         let args = serde_wasm_bindgen::to_value(&args).unwrap_or_default();
-        let _ = callback.call2(&JsValue::NULL, &JsValue::from(message as i32), &args);
+        let _ = callback.call2(&JsValue::NULL, &JsValue::from(*self as i32), &args);
     }
 }
 
@@ -108,8 +121,9 @@ impl RandomizerClient {
     pub fn get_session_data(&self) -> Promise {
         let m_ctx = self.context.clone();
         future_to_promise(async move {
-            let ctx = m_ctx.read().await;            
-            serde_wasm_bindgen::to_value(&ctx.session).map_err(|_| JsValue::from("Could not parse session data"))
+            let ctx = m_ctx.read().await;
+            let session_data = ctx.randomizer_service.get_session(&ctx.session_guid).await.map_err(|e| format!("Could not retrieve session data: {:?}", e.message()))?;         
+            serde_wasm_bindgen::to_value(&session_data).map_err(|_| JsValue::from("Could not parse session data"))
         })        
     }
 
@@ -119,6 +133,24 @@ impl RandomizerClient {
             let mut ctx = m_ctx.write().await;
             ctx.client = Some(ctx.randomizer_service.register_player(&ctx.session_guid, world_id).await.map_err(|e| format!("Could not register player: {:?}", e.message()))?);
             serde_wasm_bindgen::to_value(&ctx.client).map_err(|_| JsValue::from("Could not parse client data"))
+        })
+    }
+
+    pub fn unregister_player(&self) -> Promise {
+        let m_ctx = self.context.clone();
+        future_to_promise(async move {
+            let mut ctx = m_ctx.write().await;
+            let client = ctx.client.as_ref().ok_or_else(|| JsValue::from("Must be registered first to be able to unregister"))?;
+            ctx.randomizer_service.unregister_player(&client.client_token).await.map_err(|e| format!("Could not unregister player: {:?}", e.message()))?;
+            ctx.client = None;
+            
+            if let Some(connection) = ctx.console_connection.as_ref() {
+                let _ = connection.disconnect().await;
+            }
+
+            ctx.console_connection = None;
+            ctx.device = "".to_string();        
+            Ok(JsValue::TRUE)
         })
     }
 
@@ -163,7 +195,7 @@ impl RandomizerClient {
                     let conn = Self::initialize_console_connection().await.map_err(|e| JsValue::from(format!("Could not initialize a console connection: {:?}", e)))?;
                     ctx.console_connection = Some(conn);
                     ctx.connected = true;
-                    Message::send(&ctx.callback, Message::ConsoleConnected, Some(&[&ctx.device])).await;
+                    Message::ConsoleConnected.send(&ctx.callback,Some(&[&ctx.device]));
                     ctx.console_connection.as_ref().unwrap()
                 }
             };
@@ -177,8 +209,74 @@ impl RandomizerClient {
         let m_ctx = self.context.clone();
         future_to_promise(async move {
             let ctx = m_ctx.read().await;
-            let events = ctx.randomizer_service.get_events(&ctx.client.as_ref().unwrap().client_token, &event_types, from_event_id, to_event_id, from_world_id, to_world_id).await.map_err(|e| format!("Could not get patch data: {:?}", e.message()))?;
+            let events = ctx.randomizer_service.get_events(&ctx.client.as_ref().unwrap().client_token, &event_types, from_event_id, to_event_id, from_world_id, to_world_id).await.map_err(|e| format!("Could not get events: {:?}", e.message()))?;
             serde_wasm_bindgen::to_value(&events).map_err(|_| JsValue::from("Could not parse event data"))
+        })
+    }
+
+    pub fn get_report(&self, from_event_id: i32, event_types: Vec<i32>) -> Promise {
+        let m_ctx = self.context.clone();
+        future_to_promise(async move {
+            let ctx = m_ctx.read().await;
+            
+            let session = ctx.session.as_ref().ok_or_else(|| JsValue::from("Must be connected to a session before requesting a report"))?;
+            
+            let seed_id = match &session.seed {
+                Some(s) => s.id,
+                None => -1
+            };
+
+            let (client_token, client_world) = match ctx.client.as_ref() {
+                 Some(c) => (c.client_token.to_string(), c.world_id),
+                 None => ("".to_string(), -1)
+            };
+
+            let report = ctx.randomizer_service.get_report(&client_token, seed_id , from_event_id, client_world, &event_types).await.map_err(|e| format!("Could not get report: {:?}", e.message()))?;
+            serde_wasm_bindgen::to_value(&report).map_err(|_| JsValue::from("Could not parse report data"))
+        })
+    }
+
+    pub fn send_event(&self, event_type: i32, to_world_id: i32, item_id: i32, item_location: i32, sequence_num: i32, confirmed: bool, message: String) -> Promise {
+        let m_ctx = self.context.clone();
+        future_to_promise(async move {
+            let ctx = m_ctx.read().await;
+            let client = ctx.client.as_ref().ok_or_else(|| JsValue::from("Cannot send events without client registration"))?;
+            let event = services::randomizer::SessionEvent {
+                id: 0,
+                from_world_id: client.world_id,
+                event_type,
+                to_world_id,
+                item_id,
+                item_location,
+                sequence_num,
+                confirmed,
+                message,
+                time_stamp: "".to_string()                
+            };
+            
+            let sent_event = ctx.randomizer_service.send_event(&client.client_token, event).await.map_err(|e| format!("Could not send event: {:?}", e.message()))?;
+            serde_wasm_bindgen::to_value(&sent_event).map_err(|_| JsValue::from("Could not parse event data"))
+        })
+    } 
+
+    pub fn forfeit(&self) -> Promise {
+        let m_ctx = self.context.clone();        
+        future_to_promise(async move {
+            let ctx = m_ctx.read().await;
+            let client = ctx.client.as_ref().unwrap();
+            let _ = ctx.randomizer_service.send_event(&client.client_token, services::randomizer::SessionEvent { 
+                id: 0,
+                event_type: crate::services::randomizer::EventType::Forfeit as i32,
+                from_world_id: client.world_id,
+                item_id: 0,
+                item_location: 0,
+                message: "Forfeit".to_string(),
+                confirmed: false,
+                sequence_num: 0,
+                time_stamp: "".to_string(),
+                to_world_id: 0
+            }).await;
+            Ok(JsValue::TRUE)
         })
     }
 
@@ -218,7 +316,7 @@ impl RandomizerClient {
                 // and we'll have to attempt to reconnect here
 
                 if !ctx.connected {
-                    Message::send(&ctx.callback, Message::ConsoleReconnecting, None).await;
+                    Message::ConsoleReconnecting.send(&ctx.callback, None);
                     let conn = ctx.console_connection.as_ref().ok_or_else(|| JsValue::from("Tried to reconnect, but no client available?"))?;
                     let _ = conn.connect().await.map_err(|_| JsValue::from("Could not connect to device"))?;
                     let devices = conn.list_devices().await.map_err(|_| JsValue::from("Could not list devices"))?;
@@ -230,6 +328,7 @@ impl RandomizerClient {
                         if !devices.iter().any(|d| d.uri == ctx.device) {
                             // Otherwise we need to check if there's more than one, in that case we don't know what to do here
                             if devices.len() > 1 {
+                                Message::ConsoleError.send(&ctx.callback, Some(&["Could get device list, but there's more than one device, please reconnect manually"]));
                                 return Err(JsValue::from("Could get device list, but there's more than one device"));
                             } else {
                                 // Only one to pick from, so let's take that one
@@ -240,7 +339,7 @@ impl RandomizerClient {
 
                     // ok, we're back and we got a device setup, continue as normal
                     ctx.connected = true;
-                    Message::send(&ctx.callback, Message::ConsoleConnected, Some(&[&ctx.device])).await;
+                    Message::ConsoleConnected.send(&ctx.callback,Some(&[&ctx.device]));
                 }
 
                 match cli.update(&ctx).await {
@@ -250,7 +349,7 @@ impl RandomizerClient {
                             // and try to reconnect to the first available device, if there are more than one device when we try to
                             // auto-reconnect we'll just completely bail out.
                             
-                            Message::send(&ctx.callback, Message::ConsoleDisconnected, None).await;
+                            Message::ConsoleDisconnected.send(&ctx.callback, None);
                             let conn = ctx.console_connection.as_ref().ok_or_else(|| JsValue::from("Tried to reconnect, but no client available?"))?;
                             if let Err(e) = conn.disconnect().await {
                                 log::debug!("Got error when attempting to close the connection: {:?}", e);

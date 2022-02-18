@@ -101,6 +101,13 @@ function App(props: any) {
         setUpdateHandle(setTimeout(async () => { await updateSession(); }, 1000));
     }
 
+    const doForfeit = async () => {
+        const newClient = new RandomizerClient("https://localhost:7108", "9c1774a1a9e5482caa08ac4213ac75a3", handleMessage);
+        await newClient.initialize();
+        await newClient.register_player(1);
+        await newClient.forfeit();
+    }
+
     return <>
         <h1>Hello World!</h1>
         <h2>State: {ConnectionState[state]}</h2>
@@ -143,6 +150,7 @@ function App(props: any) {
         <div>
             <hr />
             <h1>Service is up and running</h1>
+            <button onClick={doForfeit}>Forfeit player 2</button>
         </div>
         : ""}
 
