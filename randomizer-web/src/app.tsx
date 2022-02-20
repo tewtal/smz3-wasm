@@ -32,7 +32,7 @@ function App(props: any) {
 
 
     const initializeSession = async () => {
-        const client = randomizer_client.current ?? (randomizer_client.current = new RandomizerClient("https://localhost:7108", "9c1774a1a9e5482caa08ac4213ac75a3", handleMessage));
+        const client = randomizer_client.current ?? (randomizer_client.current = new RandomizerClient("https://svc.beta.samus.link", "05d7baf17ed34192a1f2193fb7131695", handleMessage));
         try {
             await client.initialize();
             setState(ConnectionState.Initialized);

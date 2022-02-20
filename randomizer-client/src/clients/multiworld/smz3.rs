@@ -33,6 +33,14 @@ impl SMZ3Client {
         }
     }
 
+    pub fn new_with_options(items_base: u32, seed_data: u32) -> Self {
+        Self {
+            items_base,
+            seed_data,
+            ..Default::default()
+        }
+    }
+
     pub async fn update(&mut self, ctx: &ClientContext) -> Result<(), Box<dyn std::error::Error>> {
         let svc = &ctx.randomizer_service;
         let client = &ctx.client.as_ref().ok_or("Client must be initialized and authenticated")?;

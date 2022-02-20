@@ -298,6 +298,7 @@ impl RandomizerClient {
             // TODO: Turn client into a dyn trait
             *cli = match (seed.game_id.to_lowercase().as_str(), seed.game_mode.to_lowercase().as_str()) {
                 ("smz3", "multiworld") => Some(clients::multiworld::smz3::SMZ3Client::new()),
+                ("sm", "multiworld") => Some(clients::multiworld::smz3::SMZ3Client::new_with_options(0xE02000, 0x1C4F00)),
                 _ => None
             };
 
