@@ -1,9 +1,7 @@
 use crate::ClientContext;
 use std::convert::TryInto;
 use crate::Message;
-use crate::services::randomizer::EventType;
-use crate::services::randomizer::SessionEvent;
-
+use crate::services::randomizer::{EventType, SessionEvent, ClientState};
 
 /* SMZ3 Game mode updates, this takes the client context so it can talk to both the backend service and some kind of console connector */
 
@@ -65,6 +63,7 @@ impl SMZ3Client {
 
                         // Verify the SRAM seed identifiers
                         if seed_guid == ctx.session_guid && world_guid == my_world.guid {
+                            let _ = svc.update_player(&client.client_token, ClientState::Ready as i32, Some(ctx.device.to_string())).await?;
                             Message::GameState.send(&ctx.callback, Some(&["Multiworld session running"]));
                             self.game_state = GameState::Running;
                         }

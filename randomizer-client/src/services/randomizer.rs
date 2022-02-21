@@ -57,7 +57,19 @@ impl RandomizerService {
 
         let response = client.unregister_player(request).await?.into_inner();
         Ok(response)
+    }
 
+    pub async fn update_player(&self, client_token: &str, client_state: i32, device_name: Option<String>) -> Result<UpdatePlayerResponse, tonic::Status> {
+        let mut client = session_client::SessionClient::new(self.client.clone());
+
+        let request = tonic::Request::new(UpdatePlayerRequest {
+            client_token: client_token.to_string(),
+            client_state,
+            device_name
+        });
+
+        let response = client.update_player(request).await?.into_inner();
+        Ok(response)
     }
 
     pub async fn get_patch(&self, client_token: &str) -> Result<GetPatchResponse, tonic::Status> {

@@ -3,7 +3,7 @@ use futures_locks::RwLock;
 use js_sys::{Promise, Function};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
-use services::randomizer::{RandomizerService};
+use services::randomizer::{RandomizerService, ClientState};
 use console_interface::protocols::protocol::{self, ConnectionError};
 pub use console_interface::ConsoleInterface;
 
@@ -349,7 +349,11 @@ impl RandomizerClient {
                             // If we get a connection error, something bad happened to the device, we'll have to back off completely
                             // and try to reconnect to the first available device, if there are more than one device when we try to
                             // auto-reconnect we'll just completely bail out.
-                            
+                            {
+                                // Try to update state back to server, but don't fail out if we can't
+                                let client = ctx.client.as_ref().unwrap();
+                                let _ = &ctx.randomizer_service.update_player(&client.client_token, ClientState::Registered as i32, None).await;
+                            }
                             Message::ConsoleDisconnected.send(&ctx.callback, None);
                             let conn = ctx.console_connection.as_ref().ok_or_else(|| JsValue::from("Tried to reconnect, but no client available?"))?;
                             if let Err(e) = conn.disconnect().await {
